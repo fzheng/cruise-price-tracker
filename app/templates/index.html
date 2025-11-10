@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ app_name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 24px;
+        background: #020617;
+        color: #f8fafc;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding-bottom: 48px;
+      }
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+      section.card {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .section-heading {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .stat {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 12px;
+        border-radius: 12px;
+      }
+      .stat span.label {
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
+      .stat span.value {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      button.refresh {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 10px 18px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.refresh:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      canvas {
+        width: 100% !important;
+        height: clamp(260px, 40vh, 380px) !important;
+      }
+      .range-switch {
+        display: inline-flex;
+        background: rgba(148, 163, 184, 0.1);
+        padding: 4px;
+        border-radius: 999px;
+        gap: 6px;
+      }
+      .range-switch button {
+        border: none;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: transparent;
+        color: #cbd5f5;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .range-switch button.active {
+        background: rgba(37, 99, 235, 0.2);
+        color: #fff;
+      }
+      footer {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin-top: 32px;
+      }
+      a {
+        color: #93c5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p style="margin: 0; color: #94a3b8;">Royal Caribbean monitor</p>
+        <h1 style="margin: 0;">{{ app_name }}</h1>
+        <p style="margin: 0; color: #cbd5f5;">
+          Automatically crawls the stateroom booking flow every {{ crawl_interval }} minutes and records pricing deltas.
+        </p>
+      </header>
+
+      <section class="card" id="latest-card">
+        <div style="display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: center;">
+          <div>
+            <h2 style="margin: 0;">Latest Snapshot</h2>
+            <p style="margin: 4px 0; color: #94a3b8;" id="snapshot-timestamp">Loading...</p>
+          </div>
+          <button class="refresh" id="refresh-btn">Run crawl now</button>
+        </div>
+        <div class="stats-grid" id="latest-stats"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <h2 style="margin: 0;">Price vs. Time</h2>
+          <div class="range-switch" id="range-switch">
+            <button type="button" class="range-btn active" data-range="hours">Hours</button>
+            <button type="button" class="range-btn" data-range="days">Days</button>
+            <button type="button" class="range-btn" data-range="months">Months</button>
+          </div>
+        </div>
+        <canvas id="priceChart"></canvas>
+      </section>
+
+      <footer>
+        Visualization built with <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noreferrer">FastAPI</a> &amp; Chart.js.
+      </footer>
+    </main>
+
+    <script>
+      const CHART_FONT = "Inter, 'Segoe UI', sans-serif";
+      if (window.Chart) {
+        Chart.defaults.font.family = CHART_FONT;
+        Chart.defaults.font.size = 12;
+        Chart.defaults.font.weight = '500';
+        Chart.defaults.plugins.legend.labels.usePointStyle = true;
+        Chart.defaults.maintainAspectRatio = false;
+      }
+      const refreshBtn = document.getElementById('refresh-btn');
+      const isMobile = window.matchMedia('(max-width: 600px)').matches;
+      const latestStatsEl = document.getElementById('latest-stats');
+      const snapshotTs = document.getElementById('snapshot-timestamp');
+      const rangeButtons = document.querySelectorAll('[data-range]');
+      let chart;
+      let chartRange = 'hours';
+
+      rangeButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const value = button.dataset.range;
+          if (value === chartRange) return;
+          chartRange = value;
+          updateRangeButtons();
+          fetchChartData(chartRange);
+        });
+      });
+
+      function updateRangeButtons() {
+        rangeButtons.forEach((button) => {
+          button.classList.toggle('active', button.dataset.range === chartRange);
+        });
+      }
+
+      async function fetchLatest() {
+        const res = await fetch('/snapshots/latest', { cache: 'no-cache' });
+        if (!res.ok) {
+          latestStatsEl.innerHTML = '<p>No snapshots yet. Trigger a manual crawl.</p>';
+          snapshotTs.textContent = '--';
+          return null;
+        }
+        const data = await res.json();
+        renderLatest(data);
+        return data;
+      }
+
+      function renderLatest(data) {
+        snapshotTs.textContent = formatDateTime(data.scraped_at);
+        const entries = [
+          ['Itinerary', data.itinerary_name],
+          ['Leaving from', data.leaving_from],
+          ['Onboard', data.onboard],
+          ['Sail dates', `${formatDate(data.sail_start_date, true)} - ${formatDate(data.sail_end_date, true)}`],
+          ['Guests', data.guest_summary],
+          ['Room type', data.room_type],
+          ['Room subtype', data.room_subtype],
+          ['Cruise fare', formatMoney(data.cruise_fare, data.currency_code)],
+          ['Discounts', formatMoney(data.discounts, data.currency_code)],
+          ['Subtotal', formatMoney(data.subtotal, data.currency_code)],
+          ['Taxes & fees', formatMoney(data.taxes_and_fees, data.currency_code)],
+          ['Total price', formatMoney(data.total_price, data.currency_code)],
+        ];
+        latestStatsEl.innerHTML = entries
+          .filter(([, value]) => value && value !== '--')
+          .map(
+            ([label, value]) => `
+              <div class="stat">
+                <span class="label">${label}</span>
+                <span class="value">${value}</span>
+              </div>
+            `
+          )
+          .join('');
+      }
+
+      async function fetchChartData(range = chartRange) {
+        const limit = range === 'hours' ? 240 : range === 'days' ? 600 : 900;
+        const res = await fetch(`/chart-data?window=${range}&limit=${limit}`, { cache: 'no-cache' });
+        const data = await res.json();
+        renderChart(data, range);
+      }
+
+      function renderChart(data, range) {
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        const points = data.map((point) => ({
+          x: new Date(point.scraped_at),
+          total_price: point.total_price,
+          subtotal: point.subtotal,
+          cruise_fare: point.cruise_fare,
+          discounts: point.discounts,
+          taxes_and_fees: point.taxes_and_fees,
+        }));
+
+        if (chart) {
+          chart.destroy();
+        }
+
+        const timeUnit = range === 'months' ? 'month' : range === 'days' ? 'day' : 'hour';
+        const maxTicks = isMobile ? (range === 'hours' ? 3 : 4) : range === 'months' ? 6 : 8;
+
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            datasets: [buildDataset('Total price', points, 'total_price', '#34d399')],
+          },
+          options: {
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              x: {
+                type: 'time',
+                time: { tooltipFormat: 'PPpp', unit: timeUnit },
+                ticks: {
+                  color: '#cbd5f5',
+                  maxRotation: isMobile && range !== 'hours' ? 45 : 0,
+                  minRotation: isMobile && range !== 'hours' ? 45 : 0,
+                  autoSkip: true,
+                  maxTicksLimit: maxTicks,
+                  font: { family: CHART_FONT, size: 12 },
+                },
+              },
+              y: {
+                ticks: {
+                  callback(value) {
+                    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(value);
+                  },
+                  color: '#cbd5f5',
+                  font: { family: CHART_FONT, size: 12 },
+                },
+              },
+            },
+            plugins: {
+              legend: {
+                labels: { color: '#e2e8f0', boxWidth: isMobile ? 10 : 12 },
+                position: isMobile ? 'bottom' : 'top',
+              },
+              tooltip: {
+                callbacks: {
+                  title: (items) => formatDateTime(items[0].raw.x),
+                  label(context) {
+                    const point = context.raw;
+                    return `Total price: ${formatMoney(point.total_price)}`;
+                  },
+                  afterBody(items) {
+                    const point = items[0].raw;
+                    return [
+                      `Cruise fare: ${formatMoney(point.cruise_fare)}`,
+                      `Discounts: ${formatMoney(point.discounts)}`,
+                      `Subtotal: ${formatMoney(point.subtotal)}`,
+                      `Taxes & fees: ${formatMoney(point.taxes_and_fees)}`,
+                    ];
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function buildDataset(label, data, valueKey, color) {
+        return {
+          label,
+          data,
+          parsing: {
+            xAxisKey: 'x',
+            yAxisKey: valueKey,
+          },
+          borderColor: color,
+          backgroundColor: color + '33',
+          tension: 0.35,
+          spanGaps: true,
+        };
+      }
+
+      function formatMoney(value, currency = 'USD') {
+        if (value === null || value === undefined) return '--';
+        return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
+      }
+
+      const supportsTimeZoneNames = (() => {
+        try {
+          const fmt = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' });
+          fmt.format(new Date());
+          return true;
+        } catch (err) {
+          return false;
+        }
+      })();
+
+      function formatDate(value, includeWeekday = false) {
+        if (!value) return '--';
+        const options = { year: 'numeric', month: 'short', day: 'numeric' };
+        if (includeWeekday) {
+          options.weekday = 'long';
+        }
+        return new Date(value).toLocaleDateString(undefined, options);
+      }
+
+      function formatDateTime(value) {
+        if (!value) return '--';
+        const date = new Date(value);
+        const options = {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        };
+        if (supportsTimeZoneNames) {
+          options.timeZoneName = 'short';
+        }
+        try {
+          return new Intl.DateTimeFormat(undefined, options).format(date);
+        } catch (err) {
+          return date.toLocaleString();
+        }
+      }
+
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = 'Running...';
+        try {
+          const res = await fetch('/crawl-now', { method: 'POST' });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            alert(body.detail || 'Manual crawl failed');
+          }
+          await fetchLatest();
+          await fetchChartData();
+        } finally {
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = 'Run crawl now';
+        }
+      });
+
+      updateRangeButtons();
+      fetchLatest();
+      fetchChartData();
+      setInterval(fetchLatest, 5 * 60 * 1000);
+      setInterval(fetchChartData, 15 * 60 * 1000);
+    </script>
+  </body>
+</html>

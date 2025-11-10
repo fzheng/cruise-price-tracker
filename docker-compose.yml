@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cruise_prices
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/cruise_prices
+      TARGET_URL: https://www.royalcaribbean.com/room-selection/room-location?groupId=UT04PCN-4069341576&packageCode=UT4BH269&sailDate=2026-02-16&country=USA&selectedCurrencyCode=USD&shipCode=UT&cabinClassType=BALCONY&roomIndex=0&r0a=2&r0c=2&r0b=n&r0r=n&r0s=n&r0q=n&r0t=n&r0d=BALCONY&r0D=y&rgVisited=true&r0C=y&r0e=D&r0f=3D&r0J=n
+      CRAWL_INTERVAL_MINUTES: 60
+      ENABLE_SCHEDULER: "true"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+volumes:
+  postgres_data:
