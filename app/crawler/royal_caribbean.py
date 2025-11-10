@@ -78,7 +78,13 @@ class RoyalCaribbeanCrawler:
                         "sec-ch-ua-platform": '"Windows"',
                     }
                 )
-                page.goto(self.target_url, wait_until="networkidle", timeout=self.timeout_ms)
+                try:
+                    page.goto(self.target_url, wait_until="networkidle", timeout=self.timeout_ms)
+                except PlaywrightTimeoutError:
+                    logger.warning(
+                        "Initial navigation timed out after %sms, proceeding to wait for summary selectors",
+                        self.timeout_ms,
+                    )
                 self._dismiss_banners(page)
                 page.wait_for_selector(self.SUMMARY_SELECTORS["total_price"], timeout=self.timeout_ms)
 
