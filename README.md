@@ -64,6 +64,8 @@ All options come from env vars (see `.env.example`):
 | `PLAYWRIGHT_HEADLESS` | Run browser headless or visible | `true` |
 | `REQUEST_TIMEOUT_MS` | Page load wait (ms) | `120000` |
 | `CRAWLER_USER_AGENT` / `CRAWLER_LOCALE` | Headers to mimic a real browser | desktop Chrome |
+| `SENDGRID_API_KEY` | API key for sending alert emails | *(none)* |
+| `NOTIFICATION_FROM_EMAIL` | From-address shown on alert emails | `alerts@example.com` |
 
 ## API surface
 | Method | Path | Description |
@@ -72,6 +74,9 @@ All options come from env vars (see `.env.example`):
 | `GET` | `/snapshots` | Paginated (limit query) snapshots ordered newest to oldest |
 | `GET` | `/snapshots/latest` | Most recent snapshot (404 until first crawl) |
 | `GET` | `/chart-data` | Time-series payload for the chart (limit query) |
+| `GET` | `/notification` | Current alert email |
+| `POST` | `/notification` | Save/update the alert email |
+| `POST` | `/notification/test` | Send a test email to the saved address |
 | `POST` | `/crawl-now` | Runs the crawler immediately, stores, and returns the snapshot |
 
 ## Database schema

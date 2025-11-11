@@ -13,8 +13,8 @@ from .config import settings
 from .database import Base, engine, get_db, wait_for_db
 from .crawler.royal_caribbean import RoyalCaribbeanCrawler
 from .scheduler import scheduler
-from .schemas import ChartPoint, CruiseSnapshot
-from .services import snapshot_service
+from .schemas import ChartPoint, CruiseSnapshot, NotificationSettings, NotificationStatus
+from .services import notification_service, snapshot_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -87,6 +87,30 @@ def chart_data(
     if normalized not in WINDOW_OPTIONS:
         raise HTTPException(status_code=400, detail="Invalid window. Use hours, days, or months.")
     return snapshot_service.get_chart_points(db, limit, normalized)
+
+
+@app.get("/notification", response_model=NotificationStatus)
+def get_notification(db: Session = Depends(get_db)) -> NotificationStatus:
+    email = notification_service.get_notification_email(db)
+    return NotificationStatus(email=email)
+
+
+@app.post("/notification", response_model=NotificationStatus)
+def set_notification(settings_in: NotificationSettings, db: Session = Depends(get_db)) -> NotificationStatus:
+    email = notification_service.upsert_notification_email(db, settings_in.email)
+    return NotificationStatus(email=email)
+
+
+@app.post("/notification/test")
+def send_test_notification(db: Session = Depends(get_db)) -> dict[str, str]:
+    email = notification_service.get_notification_email(db)
+    if not email:
+        raise HTTPException(status_code=400, detail="No notification email configured")
+    try:
+        notification_service.send_test_email(email)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "sent"}
 
 
 @app.post("/crawl-now", response_model=CruiseSnapshot, status_code=status.HTTP_201_CREATED)

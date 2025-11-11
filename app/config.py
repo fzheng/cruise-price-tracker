@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     )
     locale: str = Field(default="en-US", validation_alias="CRAWLER_LOCALE")
     enable_scheduler: bool = Field(default=True, validation_alias="ENABLE_SCHEDULER")
+    sendgrid_api_key: str | None = Field(default=None, validation_alias="SENDGRID_API_KEY")
+    notification_from_email: str = Field(
+        default="alerts@example.com", validation_alias="NOTIFICATION_FROM_EMAIL"
+    )
 
 
 @lru_cache

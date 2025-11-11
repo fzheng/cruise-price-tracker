@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class CruiseSnapshotBase(BaseModel):
@@ -48,3 +48,11 @@ class ChartPoint(BaseModel):
     subtotal: Decimal | None = None
     taxes_and_fees: Decimal | None = None
     total_price: Decimal | None = None
+
+
+class NotificationSettings(BaseModel):
+    email: EmailStr
+
+
+class NotificationStatus(BaseModel):
+    email: EmailStr | None = None

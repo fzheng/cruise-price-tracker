@@ -108,6 +108,35 @@
         background: rgba(37, 99, 235, 0.2);
         color: #fff;
       }
+      .alert-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .alert-form input {
+        flex: 1 1 240px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.6);
+        color: #f8fafc;
+        font-size: 1rem;
+      }
+      .alert-form button {
+        background: rgba(37, 99, 235, 0.2);
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 16px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .alert-status {
+        margin-top: 8px;
+        font-size: 0.9rem;
+        color: #94a3b8;
+      }
       footer {
         text-align: center;
         color: #94a3b8;
@@ -152,6 +181,19 @@
         <canvas id="priceChart"></canvas>
       </section>
 
+      <section class="card">
+        <div class="section-heading">
+          <h2 style="margin: 0;">Email Alerts</h2>
+          <p style="margin: 0; color: #94a3b8;">Get notified when the total price moves.</p>
+        </div>
+        <div class="alert-form">
+          <input type="email" id="alert-email" placeholder="you@example.com" />
+          <button type="button" id="save-email">Save email</button>
+          <button type="button" id="test-email">Send test</button>
+        </div>
+        <p class="alert-status" id="alert-status"></p>
+      </section>
+
       <footer>
         Visualization built with <a href="https://fastapi.tiangolo.com/" target="_blank" rel="noreferrer">FastAPI</a> &amp; Chart.js.
       </footer>
@@ -171,6 +213,10 @@
       const latestStatsEl = document.getElementById('latest-stats');
       const snapshotTs = document.getElementById('snapshot-timestamp');
       const rangeButtons = document.querySelectorAll('[data-range]');
+      const alertEmailInput = document.getElementById('alert-email');
+      const saveEmailBtn = document.getElementById('save-email');
+      const testEmailBtn = document.getElementById('test-email');
+      const alertStatusEl = document.getElementById('alert-status');
       let chart;
       let chartRange = 'hours';
 
@@ -182,6 +228,41 @@
           updateRangeButtons();
           fetchChartData(chartRange);
         });
+      });
+
+      saveEmailBtn.addEventListener('click', async () => {
+        const email = alertEmailInput.value.trim();
+        if (!email) {
+          setAlertStatus('Enter a valid email address.', true);
+          return;
+        }
+        try {
+          const res = await fetch('/notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || 'Failed to save email');
+          }
+          setAlertStatus('Email saved. You will be notified on price changes.');
+        } catch (error) {
+          setAlertStatus(error.message, true);
+        }
+      });
+
+      testEmailBtn.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/notification/test', { method: 'POST' });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.detail || 'Failed to send test email');
+          }
+          setAlertStatus('Test email sent successfully.');
+        } catch (error) {
+          setAlertStatus(error.message, true);
+        }
       });
 
       function updateRangeButtons() {
@@ -236,6 +317,15 @@
         const res = await fetch(`/chart-data?window=${range}&limit=${limit}`, { cache: 'no-cache' });
         const data = await res.json();
         renderChart(data, range);
+      }
+
+      async function loadNotificationEmail() {
+        const res = await fetch('/notification', { cache: 'no-cache' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.email) {
+          alertEmailInput.value = data.email;
+        }
       }
 
       function renderChart(data, range) {
@@ -371,6 +461,11 @@
         }
       }
 
+      function setAlertStatus(message, isError = false) {
+        alertStatusEl.textContent = message;
+        alertStatusEl.style.color = isError ? '#f87171' : '#94a3b8';
+      }
+
       refreshBtn.addEventListener('click', async () => {
         refreshBtn.disabled = true;
         refreshBtn.textContent = 'Running...';
@@ -389,6 +484,7 @@
       });
 
       updateRangeButtons();
+      loadNotificationEmail();
       fetchLatest();
       fetchChartData();
       setInterval(fetchLatest, 5 * 60 * 1000);

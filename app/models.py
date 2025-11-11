@@ -43,3 +43,15 @@ class CruisePriceSnapshot(Base):
         return "CruisePriceSnapshot(id={0}, itinerary={1}, total={2})".format(
             self.id, self.itinerary_name, self.total_price
         )
+
+
+class NotificationPreference(Base):
+    """Stores the single email address to notify about price changes."""
+
+    __tablename__ = "notification_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    email: Mapped[str] = mapped_column(String(320))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
